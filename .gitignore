@@ -35,3 +35,10 @@ override.tf.json
 # Ignore CLI configuration files
 .terraformrc
 terraform.rc
+00_GST_lambda/src/go.sum
+00_GST_lambda/src/main
+00_GST_lambda/lambda_function.zip
+00_GST_lambda/src/bootstrap
+hasnode
+00_GST_lambda/response.json
+00_GST_lambda/.terraform.lock.hcl
