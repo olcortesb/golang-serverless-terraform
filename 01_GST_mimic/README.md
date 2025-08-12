@@ -1,58 +1,55 @@
-# 00 - Basic Go Lambda
+# 01 - Go Lambda with API Gateway and DynamoDB
 
-Basic Go Lambda function deployed with Terraform using `provided.al2023` runtime.
+Serverless JSON storage API built with Go Lambda functions, API Gateway, and DynamoDB. Acts as an in-memory database that can store and retrieve any JSON data.
 
 ## Structure
 
 ```
-00_GST_lambda/
+01_GST_mimic/
 ├── src/
-│   ├── go.mod          # Go module
-│   ├── main.go         # Source code
-│   ├── go.sum          # Go dependencies checksum
-│   └── bootstrap       # Compiled binary (generated)
-├── main.tf             # Terraform resources
-├── variables.tf        # Configurable variables
-├── outputs.tf          # Module outputs
-├── providers.tf        # Provider configuration
-├── backend.tf          # Terraform backend
-├── lambda_function.zip # Deployment package (generated)
-├── response.json       # Test response (generated)
-└── README.md           # This documentation
+│   ├── request/
+│   │   ├── go.mod          # Go module for POST lambda
+│   │   ├── main.go         # POST handler source code
+│   │   └── bootstrap       # Compiled binary (generated)
+│   └── response/
+│       ├── go.mod          # Go module for GET lambda
+│       ├── main.go         # GET handler source code
+│       └── bootstrap       # Compiled binary (generated)
+├── apigateway.tf           # API Gateway configuration
+├── dynamo.tf               # DynamoDB table
+├── lambdarequest.tf        # POST Lambda function and IAM
+├── lambdaresponse.tf       # GET Lambda function
+├── random.tf               # Random suffix for resources
+├── variables.tf            # Configurable variables
+├── outputs.tf              # Module outputs
+├── providers.tf            # Provider configuration
+├── backend.tf              # Terraform backend
+└── README.md               # This documentation
 ```
 
-## Why `provided.al2023`?
+## API Endpoints
 
-- **Runtime `go1.x` deprecated**: AWS deprecated all native Go runtimes
-- **ARM64 support**: 50% cheaper than x86_64
-- **Full control**: Always use the latest Go version
-- **Better performance**: Native binary without overhead
+- **POST /mimic**: Store any JSON data, returns generated ID
+- **GET /mimic/{id}**: Retrieve JSON data by ID
+
+## Features
+
+- **Generic JSON Storage**: Accepts and stores any valid JSON structure
+- **API Key Protection**: Requires API key with monthly quota
+- **ARM64 Lambda**: Cost-optimized with Graviton2 processors
+- **Separate Lambda Functions**: Independent scaling for read/write operations
+- **Random Resource Naming**: Avoids deployment conflicts
 
 ## Step-by-Step Deployment Guide
 
 ### 1. Clone the Repository
 
 ```bash
-# Clone the repository
 git clone https://github.com/your-username/golang-serverless-terraform.git
-cd golang-serverless-terraform/00_GST_lambda
+cd golang-serverless-terraform/01_GST_mimic
 ```
 
-### 2. Review the Project Structure
-
-The repository already contains all necessary files:
-
-- **src/main.go**: Lambda function code
-- **src/go.mod**: Go module definition
-- **main.tf**: Lambda resource definition
-- **variables.tf**: Configurable variables
-- **outputs.tf**: Output definitions
-- **providers.tf**: AWS provider configuration
-- **backend.tf**: Terraform backend configuration
-
-### 3. Configure AWS Credentials
-
-Make sure your AWS credentials are properly configured:
+### 2. Configure AWS Credentials
 
 ```bash
 # Option 1: Using environment variables
@@ -64,7 +61,7 @@ export AWS_REGION="us-east-1"
 aws configure
 ```
 
-### 4. Deploy with Terraform
+### 3. Deploy with Terraform
 
 ```bash
 # Initialize Terraform
@@ -74,56 +71,105 @@ terraform init
 terraform plan
 
 # Apply changes
-terraform apply -auto-approve
+terraform apply
 ```
 
-### 5. Test the Lambda Function
+### 4. Test the API
 
 ```bash
-# Invoke the Lambda function
-aws lambda invoke --function-name go-hello-serverless-lambda response.json
+# Get the API Gateway URL and API Key from outputs
+API_URL=$(terraform output -raw api_gateway_url)
+API_KEY=$(terraform output -raw api_key_value)
 
-# View the response
-cat response.json
+# Store JSON data
+curl -X POST "${API_URL}/mimic" \
+  -H "x-api-key: ${API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "John", "age": 30, "city": "New York"}'
+
+# Response: "uuid-generated-id"
+
+# Retrieve JSON data
+curl -X GET "${API_URL}/mimic/uuid-generated-id" \
+  -H "x-api-key: ${API_KEY}"
+
+# Response: {"id": "uuid-generated-id", "body": {"name": "John", "age": 30, "city": "New York"}}
 ```
 
-Expected output: `"Hello λ!"`
-
-### 6. Clean Up
+### 5. Clean Up
 
 ```bash
-# Destroy all resources when done
-terraform destroy -auto-approve
+terraform destroy
 ```
 
-## Common Issues and Solutions
+## Configuration Variables
 
-### 1. Invalid Go Version
-
-**Error:**
+```hcl
+function_name     = "go-mimic-lambda"           # Base Lambda function name
+table_name        = "mimic-table"               # DynamoDB table name
+api_name          = "mimic-api"                 # API Gateway name
+api_quota_limit   = 1000                        # Monthly API quota
+api_rate_limit    = 10                          # Requests per second
+api_burst_limit   = 20                          # Burst limit
+runtime           = "provided.al2023"           # Lambda runtime
+architecture      = "arm64"                    # Lambda architecture
+timeout           = 30                          # Lambda timeout (seconds)
+memory_size       = 128                         # Lambda memory (MB)
 ```
-go: errors parsing go.mod: invalid go version '1.24.5': must match format 1.23
-```
-
-**Solution:**
-Edit `go.mod` to use a valid Go version format like `go 1.23` or `go 1.22`.
-
-### 2. Bootstrap Not Found
-
-**Error:**
-```json
-{
-  "errorType": "Runtime.InvalidEntrypoint",
-  "errorMessage": "Couldn't find valid bootstrap(s): [/var/task/bootstrap /opt/bootstrap]"
-}
-```
-
-**Solution:**
-Ensure the compiled binary is named `bootstrap` and not `main`.
 
 ## Outputs
 
-- `lambda_function_name`: Lambda function name
-- `lambda_function_arn`: Function ARN
-- `lambda_invoke_arn`: ARN to invoke the function
-- `lambda_role_arn`: Execution role ARN
+- `api_gateway_url`: API Gateway endpoint URL
+- `api_key_value`: API key for authentication (sensitive)
+- `resource_suffix`: Random suffix used for resource names
+- `create_lambda_function_name`: POST Lambda function name
+- `get_lambda_function_name`: GET Lambda function name
+- `dynamodb_table_name`: DynamoDB table name
+
+## Example JSON Payloads
+
+### Store User Data
+```json
+{
+  "name": "Alice",
+  "email": "alice@example.com",
+  "preferences": {
+    "theme": "dark",
+    "notifications": true
+  }
+}
+```
+
+### Store Product Information
+```json
+{
+  "product": "Laptop",
+  "price": 999.99,
+  "specs": {
+    "cpu": "Intel i7",
+    "ram": "16GB",
+    "storage": "512GB SSD"
+  },
+  "tags": ["electronics", "computers"]
+}
+```
+
+### Store Any JSON Structure
+```json
+{
+  "timestamp": "2024-01-15T10:30:00Z",
+  "data": [1, 2, 3, 4, 5],
+  "metadata": {
+    "version": "1.0",
+    "source": "api"
+  }
+}
+```
+
+## Architecture
+
+- **API Gateway**: REST API with API key authentication
+- **Lambda Functions**: Two separate functions for POST/GET operations
+- **DynamoDB**: NoSQL database for JSON storage
+- **IAM Roles**: Least privilege access for Lambda functions
+- **Random Naming**: Prevents resource conflicts during deployment
