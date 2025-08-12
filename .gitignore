@@ -42,3 +42,7 @@ terraform.rc
 hasnode
 00_GST_lambda/response.json
 00_GST_lambda/.terraform.lock.hcl
+01_GST_mimic/src_js
+01_GST_mimic/.terraform
+01_GST_mimic/create_lambda_function.zip
+01_GST_mimic/get_lambda_function.zip
